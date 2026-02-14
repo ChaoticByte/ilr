@@ -24,6 +24,10 @@ You also need the pip packages in `requirements.txt`!
 
 You may have to write your own profile. Or tweak existing ones when you have another screen resolution or ingame settings.
 
+List of predefined profiles:
+
+- [Horizon Zero Dawn](./profiles/hzd/)
+
 
 ## Create a profile
 
