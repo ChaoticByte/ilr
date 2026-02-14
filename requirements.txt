@@ -1,0 +1,5 @@
+mss~=10.1.0
+numpy~=2.4.2
+Pillow~=12.1.1
+PyYaml~=6.0.3
+scikit_image~=0.26.0

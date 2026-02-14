@@ -1,0 +1,10 @@
+reference: ./hzd-loading.png
+monitor: 1
+region:
+  left: 98
+  top: 975
+  width: 118
+  height: 25
+difference:
+  method: nrmse
+  threshold: 0.02
