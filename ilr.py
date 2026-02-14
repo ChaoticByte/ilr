@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Copyright (c) 2026, Julian Müller (ChaoticByte)
+
 from argparse import ArgumentParser
 from os import environ, getuid
 from pathlib import Path
