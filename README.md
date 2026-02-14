@@ -7,7 +7,7 @@ This is an experimental image-based Load Remover compatible with LibreSplit.
 
 - This works only in games where a distinct region, e.g. a text is present at exactly the same position during the loading screen
 - Currently fixed detection framerate of 30fps
-- Wayland is not supported!
+- Wayland is not supported ([see this issue in python-mss](https://github.com/BoboTiG/python-mss/issues/155))!
 
 
 ## Compatibility
@@ -53,5 +53,5 @@ difference:
   threshold: 0.02
 ```
 
-You can dump cropped screenshots in 1-second intervals using the `dump-images` command, and use one of those as the reference image.
-Run the `dump-difference` command to debug the differences for every frame.
+You can dump cropped screenshots in 1-second intervals using the `dump-images` command, and use one of those as the reference image.  
+Run the `dump-difference` command to debug the difference to the reference image, for every frame.
