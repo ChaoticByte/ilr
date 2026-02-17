@@ -1,0 +1,10 @@
+reference: ./hzdr-loading.png
+monitor: 1
+region:
+  left: 0
+  top: 1050
+  width: 50
+  height: 27
+difference:
+  method: nrmse
+  threshold: 0.02
