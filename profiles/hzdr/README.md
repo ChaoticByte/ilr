@@ -11,5 +11,4 @@ This profile should work with the following configuration:
 - On Monitor 1
 - Fullscreen
 - Resolution: 1920x1080
-- Language: English
-- Use Proton 9 to fix issues [with hangups on focus loss](https://www.protondb.com/app/2561580#kSPEEkCyjg)
+- I recommend to use Proton 9 [to fix issues](https://www.protondb.com/app/2561580#kSPEEkCyjg) with Fullscreen & hangups on focus loss

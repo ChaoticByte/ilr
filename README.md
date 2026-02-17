@@ -27,6 +27,7 @@ You may have to write your own profile. Or tweak existing ones when you have ano
 List of predefined profiles:
 
 - [Horizon Zero Dawn](./profiles/hzd/)
+- [Horizon Zero Dawn Remastered (inaccurate)](./profiles/hzdr/)
 
 
 ## Create a profile
