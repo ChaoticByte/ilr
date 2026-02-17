@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# pylint: disable=line-too-long,missing-module-docstring,missing-class-docstring,missing-function-docstring
+
 # Copyright (c) 2026, Julian Müller (ChaoticByte)
 
 from argparse import ArgumentParser
@@ -14,7 +16,7 @@ import numpy as np
 from mss import mss
 from PIL import Image
 from yaml import safe_load as yaml_safe_load
-from skimage.metrics import normalized_root_mse
+from skimage.metrics import normalized_root_mse # pylint: disable=no-name-in-module
 
 
 # Screenshot interval
@@ -33,7 +35,7 @@ METHODS = [
 #
 
 class Profile:
-    
+
     def __init__(
         self,
         reference_image: Path,
@@ -93,7 +95,7 @@ def libresplit_ctl(cmd: int, address: Path):
             cmd_payload = pack("<I", cmd)
             sock.connect(str(address.absolute().resolve()))
             sock.sendall(pack(">I", len(cmd_payload)) + cmd_payload)
-        except ConnectionRefusedError as err:
+        except Exception as err:
             print(f"Couldn't send command to {str(address)}", file=stderr)
             print(err.with_traceback(None)) # ?
 
@@ -187,10 +189,10 @@ if __name__ == "__main__":
     # parse profile
     p = Profile.from_yml_file(args.profile)
     # command
-    cmd = args.command
-    if cmd == CMD_RUN:
+    arg_cmd = args.command
+    if arg_cmd == CMD_RUN:
         run(p)
-    elif cmd == CMD_DUMPDIFF:
+    elif arg_cmd == CMD_DUMPDIFF:
         run(p, dump_diff_only=True)
-    elif cmd == CMD_DUMPIMAGES:
+    elif arg_cmd == CMD_DUMPIMAGES:
         dumpimgs(p)
