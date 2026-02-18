@@ -19,10 +19,10 @@ from yaml import safe_load as yaml_safe_load
 from skimage.metrics import normalized_root_mse # pylint: disable=no-name-in-module
 
 
-# Screenshot interval
+# Screenshot frequencies
 
-INTERVAL_DETECT = 1.0 / 30.0
-INTERVAL_DUMP = 1.0
+FREQ_DETECT_DEFAULT = 30.0
+FREQ_DUMP_DEFAULT = 1.0
 
 
 # Methods for calculating the difference between reference image an current screenshot
@@ -44,6 +44,7 @@ class Profile:
         width: int, height: int,
         difference_method: str,
         difference_threshold: float,
+        target_dps: float = 30,
         profile_yml_file: Path = None
     ):
         if not isinstance(reference_image, Path):
@@ -59,10 +60,11 @@ class Profile:
         self.difference_method = difference_method
         self.diff_threshold = float(difference_threshold)
         self.profile_yml_file = profile_yml_file
+        self.target_dps = float(target_dps)
 
     @classmethod
     def from_yml_file(cls, filepath: Path):
-        profile_dict = yaml_safe_load(filepath.read_text())
+        profile_dict: dict = yaml_safe_load(filepath.read_text())
         return cls(
             Path(filepath.absolute().parent / Path(profile_dict["reference"])),
             profile_dict["monitor"],
@@ -72,6 +74,7 @@ class Profile:
             profile_dict["region"]["height"],
             profile_dict["difference"]["method"],
             profile_dict["difference"]["threshold"],
+            target_dps=profile_dict.get("target_dps", FREQ_DETECT_DEFAULT),
             profile_yml_file=filepath
         )
 
@@ -83,8 +86,7 @@ LIBRESPLIT_CMD_STOP_RESET = 1
 def get_xdg_runtime_dir() -> Path:
     if "XDG_RUNTIME_DIR" in environ:
         return Path(environ["XDG_RUNTIME_DIR"]).absolute()
-    else:
-        return Path(f"/run/user/{getuid}")
+    return Path(f"/run/user/{getuid}")
 
 def get_libresplit_socket_file() -> Path:
     return get_xdg_runtime_dir() / "libresplit.sock"
@@ -107,6 +109,7 @@ def match_reference(reference, current, profile: Profile) -> tuple[bool, float]:
         diff = normalized_root_mse(reference, current)
         return diff < profile.diff_threshold, diff
     # elif ...
+    raise RuntimeError(f"Unknown method {profile.difference_method}")
 
 
 # image-related helper functions
@@ -155,11 +158,12 @@ def run(profile: Profile, dump_diff_only: bool = False):
                         print("not loading")
                         libresplit_ctl(LIBRESPLIT_CMD_START_SPLIT, libresplit_socket_file)
             dt = time() - t1
-            sleep(max(0, INTERVAL_DETECT - dt))
+            sleep(max(0, (1.0 / profile.target_dps) - dt))
             t1 = time()
 
 
-def dumpimgs(profile: Profile):
+def dumpimgs(profile: Profile, dump_frequency: float = FREQ_DUMP_DEFAULT):
+    print(f"Dumping {dump_frequency} image(s) per second...")
     if profile.profile_yml_file is None:
         out_dir = Path(f"dump_{int(time())}")
     else:
@@ -172,7 +176,7 @@ def dumpimgs(profile: Profile):
             img = Image.frombytes("RGB", sx.size, sx.bgra, "raw", "BGRX")
             img.save(out_dir / f"{int(time() * 10)}.png", format="png")
             # we don't need to use dt here, because the added precision is negligible here
-            sleep(INTERVAL_DUMP)
+            sleep(1.0 / dump_frequency)
 
 
 # entrypoint
@@ -183,8 +187,9 @@ CMD_DUMPIMAGES = "dump-images"
 
 if __name__ == "__main__":
     argparser = ArgumentParser()
-    argparser.add_argument("command", type=str, choices=[CMD_RUN, CMD_DUMPDIFF, CMD_DUMPIMAGES], help="command")
-    argparser.add_argument("profile", type=Path, help="Path to the profile configuration")
+    argparser.add_argument("command", type=str, choices=[CMD_RUN, CMD_DUMPDIFF, CMD_DUMPIMAGES], help="(str) command")
+    argparser.add_argument("profile", type=Path, help="(str) Path to the profile configuration")
+    argparser.add_argument("--dump-freq", default=FREQ_DUMP_DEFAULT, type=float, help=f"(float) How many images to save per second (command: {CMD_DUMPIMAGES}, optional, default: {FREQ_DUMP_DEFAULT})")
     args = argparser.parse_args()
     # parse profile
     p = Profile.from_yml_file(args.profile)
@@ -195,4 +200,4 @@ if __name__ == "__main__":
     elif arg_cmd == CMD_DUMPDIFF:
         run(p, dump_diff_only=True)
     elif arg_cmd == CMD_DUMPIMAGES:
-        dumpimgs(p)
+        dumpimgs(p, args.dump_freq)

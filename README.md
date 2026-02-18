@@ -32,11 +32,11 @@ List of predefined profiles:
 
 ## Create a profile
 
-Take a look at the profile for Horizon Zero Dawn:
+Take a look at this example profile:
 
 ```yml
 # Path to the reference image, relative to the profile file:
-reference: ./hzd-loading.png
+reference: ./loading.png
 # starts with 1
 monitor: 1
 # The region containing something that is always
@@ -56,6 +56,9 @@ difference:
   # If the difference < this threshold, the current
   # frame is considered a loading screen
   threshold: 0.02
+# How many detection to perform per second (ideally)
+# optional, default: 30
+target_dps: 30
 ```
 
 You can dump cropped screenshots in 1-second intervals using the `dump-images` command, and use one of those as the reference image.  
