@@ -1,0 +1,14 @@
+references:
+  - image: ./fo4-loading.png
+    mask: ./fo4-mask.png
+  - image: ./fo4-loading2.png
+    mask: ./fo4-mask.png
+monitor: 1
+region:
+  left: 1730
+  top: 987
+  width: 98
+  height: 42
+difference:
+  method: nrmse
+  threshold: 0.02
