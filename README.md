@@ -59,6 +59,11 @@ difference:
 # How many detection to perform per second (ideally)
 # optional, default: 30
 target_dps: 30
+# Pre-defined filters might help to improve detection accuracy
+filters:
+  # Converts the screenshots from RGB to greyscale
+  # by calculating the mean value of r, g and b
+  - mean_greyscale
 ```
 
 You can dump cropped screenshots in 1-second intervals using the `dump-images` command, and use one of those as the reference image.  
