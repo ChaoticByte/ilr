@@ -13,7 +13,11 @@ from sys import stderr
 from time import time, sleep
 
 import numpy as np
+from numpy.typing import ArrayLike
+
 from mss import mss
+from mss.screenshot import ScreenShot
+
 from PIL import Image
 from yaml import safe_load as yaml_safe_load
 from skimage.metrics import normalized_root_mse # pylint: disable=no-name-in-module
@@ -23,6 +27,13 @@ from skimage.metrics import normalized_root_mse # pylint: disable=no-name-in-mod
 
 FREQ_DETECT_DEFAULT = 30.0
 FREQ_DUMP_DEFAULT = 1.0
+
+# Filters
+
+FILTER_MEAN_GREYSCALE = "mean_greyscale"
+FILTERS = [
+    FILTER_MEAN_GREYSCALE
+]
 
 
 # Methods for calculating the difference between reference image an current screenshot
@@ -45,6 +56,7 @@ class Profile:
         difference_method: str,
         difference_threshold: float,
         target_dps: float = 30,
+        filters: list[str] = [],
         profile_yml_file: Path = None
     ):
         if not isinstance(reference_image, Path):
@@ -61,6 +73,11 @@ class Profile:
         self.diff_threshold = float(difference_threshold)
         self.profile_yml_file = profile_yml_file
         self.target_dps = float(target_dps)
+        self.filters = []
+        for f in filters:
+            if not f in FILTERS:
+                raise ValueError(f"Unknown filter '{f}' - supported values: {' '.join(FILTERS)}")
+            self.filters.append(f)
 
     @classmethod
     def from_yml_file(cls, filepath: Path):
@@ -75,6 +92,7 @@ class Profile:
             profile_dict["difference"]["method"],
             profile_dict["difference"]["threshold"],
             target_dps=profile_dict.get("target_dps", FREQ_DETECT_DEFAULT),
+            filters=profile_dict.get("filters", []),
             profile_yml_file=filepath
         )
 
@@ -102,6 +120,19 @@ def libresplit_ctl(cmd: int, address: Path):
             print(err.with_traceback(None)) # ?
 
 
+# Image manipulation filters
+
+def apply_filters(img: ArrayLike, profile: Profile) -> ArrayLike:
+    if FILTER_MEAN_GREYSCALE in profile.filters:
+        # changes array shape!
+        img = np.mean(img, 2)
+    return img
+
+
+def remove_alpha(img: ArrayLike) -> ArrayLike:
+    return np.delete(img, 3, axis=2) # alpha has idx 3
+
+
 # Calculate difference -> match reference
 
 def match_reference(reference, current, profile: Profile) -> tuple[bool, float]:
@@ -112,13 +143,9 @@ def match_reference(reference, current, profile: Profile) -> tuple[bool, float]:
     raise RuntimeError(f"Unknown method {profile.difference_method}")
 
 
-# image-related helper functions
+# Grab a screenshot
 
-def remove_alpha(img):
-    return np.delete(img, 3, axis=2) # alpha has idx 3
-
-
-def grab(mss_instance, monitor, profile: Profile):
+def grab(mss_instance, monitor, profile: Profile) -> ScreenShot:
     return mss_instance.grab({
                 "left": monitor["left"] + profile.left,
                 "top": monitor["top"] + profile.top,
@@ -126,7 +153,7 @@ def grab(mss_instance, monitor, profile: Profile):
                 "height": profile.height
             })
 
-def grab_array_noalpha(mss_instance, monitor, profile):
+def grab_array_noalpha(mss_instance, monitor, profile) -> ArrayLike:
     return remove_alpha(np.array(grab(mss_instance, monitor, profile)))
 
 
@@ -136,6 +163,7 @@ def run(profile: Profile, dump_diff_only: bool = False):
     ref = Image.open(profile.reference_image, formats=["png"])
     ref.load()
     ref = np.asarray(ref)[:, :, ::-1] # RGB to BGR
+    ref = apply_filters(ref, profile)
     state_loading = False
     libresplit_socket_file = get_libresplit_socket_file()
     with mss() as ms:
@@ -143,6 +171,7 @@ def run(profile: Profile, dump_diff_only: bool = False):
         t1 = time()
         while True:
             current = grab_array_noalpha(ms, mon, profile)
+            current = apply_filters(current, profile)
             is_match, diff = match_reference(ref, current, profile)
             if dump_diff_only:
                 print(diff)
