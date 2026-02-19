@@ -57,6 +57,7 @@ class Profile:
         difference_threshold: float,
         target_dps: float = 30,
         filters: list[str] = [],
+        mask_image: Path = None,
         profile_yml_file: Path = None
     ):
         if not isinstance(reference_image, Path):
@@ -78,10 +79,19 @@ class Profile:
             if not f in FILTERS:
                 raise ValueError(f"Unknown filter '{f}' - supported values: {' '.join(FILTERS)}")
             self.filters.append(f)
+        if mask_image is None:
+            self.mask_image = None
+        else:
+            if not isinstance(mask_image, Path):
+                raise TypeError("mask_image must be either Path or None")
+            self.mask_image = mask_image
 
     @classmethod
     def from_yml_file(cls, filepath: Path):
         profile_dict: dict = yaml_safe_load(filepath.read_text())
+        mask_image = profile_dict.get("mask", None)
+        if mask_image is not None:
+            mask_image = filepath.absolute().parent / Path(mask_image)
         return cls(
             Path(filepath.absolute().parent / Path(profile_dict["reference"])),
             profile_dict["monitor"],
@@ -93,6 +103,7 @@ class Profile:
             profile_dict["difference"]["threshold"],
             target_dps=profile_dict.get("target_dps", FREQ_DETECT_DEFAULT),
             filters=profile_dict.get("filters", []),
+            mask_image=mask_image,
             profile_yml_file=filepath
         )
 
@@ -128,9 +139,15 @@ def apply_filters(img: ArrayLike, profile: Profile) -> ArrayLike:
         img = np.mean(img, 2)
     return img
 
+def mask_img(img: ArrayLike, mask: ArrayLike) -> ArrayLike:
+    return img * mask
 
 def remove_alpha(img: ArrayLike) -> ArrayLike:
-    return np.delete(img, 3, axis=2) # alpha has idx 3
+    shape = img.shape
+    if len(shape) == 3:
+        if shape[2] == 4:
+            return np.delete(img, 3, axis=2) # alpha has idx 3
+    return img
 
 
 # Calculate difference -> match reference
@@ -160,10 +177,19 @@ def grab_array_noalpha(mss_instance, monitor, profile) -> ArrayLike:
 # main functions
 
 def run(profile: Profile, dump_diff_only: bool = False):
+    use_mask = profile.mask_image is not None
     ref = Image.open(profile.reference_image, formats=["png"])
     ref.load()
     ref = np.asarray(ref)[:, :, ::-1] # RGB to BGR
+    ref = remove_alpha(ref)
     ref = apply_filters(ref, profile)
+    if use_mask:
+        mask = Image.open(profile.mask_image, formats=["png"])
+        mask.load()
+        mask = np.asarray(mask)[:, :, ::-1] # RGB to BGR
+        mask = remove_alpha(mask)
+        mask = apply_filters(mask, profile)
+        ref = mask_img(ref, mask)
     state_loading = False
     libresplit_socket_file = get_libresplit_socket_file()
     with mss() as ms:
@@ -172,6 +198,8 @@ def run(profile: Profile, dump_diff_only: bool = False):
         while True:
             current = grab_array_noalpha(ms, mon, profile)
             current = apply_filters(current, profile)
+            if use_mask:
+                current = mask_img(current, mask)
             is_match, diff = match_reference(ref, current, profile)
             if dump_diff_only:
                 print(diff)
