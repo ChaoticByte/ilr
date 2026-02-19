@@ -1,6 +1,6 @@
 # Horizon Zero Dawn Profile
 
-This should work with the following configuration:
+Reference configuration:
 
 - On Monitor 1
 - Fullscreen/Exclusive Fullscreen

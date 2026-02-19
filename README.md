@@ -34,8 +34,12 @@ List of predefined profiles:
 Take a look at this example profile:
 
 ```yml
-# Path to the reference image, relative to the profile file:
-reference: ./loading.png
+# Path to the reference images, relative to the profile file:
+references:
+  image: ./loading.png
+  # You can also specify a mask to ignore areas of
+  # the reference image & screenshots (this is optional):
+  mask: ./loading-mask.png
 # starts with 1
 monitor: 1
 # The region containing something that is always

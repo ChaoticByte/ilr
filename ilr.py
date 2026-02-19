@@ -45,11 +45,49 @@ METHODS = [
 
 #
 
+
+class ProfileReferenceImage:
+
+    def __init__(self, reference_fp: Path, mask_fp: Path = None):
+        if not isinstance(reference_fp, Path):
+            raise TypeError("reference must be Path")
+        self.reference_fp = reference_fp
+        self.mask_fp = None
+        if mask_fp is not None:
+            if not isinstance(mask_fp, Path):
+                raise TypeError("mask_image must be either Path or None")
+            self.mask_fp = mask_fp
+        self.use_mask: bool = self.mask_fp is not None
+        # for later
+        self.reference = None
+        self.mask = None
+
+    def load(self, filters: list):
+        ref = Image.open(self.reference_fp, formats=["png"])
+        ref.load()
+        ref = np.asarray(ref)
+        ref = remove_alpha(ref)
+        ref = ref[:, :, ::-1] # RGB to BGR
+        ref = apply_filters(ref, filters)
+        if self.use_mask:
+            mask = Image.open(self.mask_fp, formats=["png"])
+            mask.load()
+            mask = np.asarray(mask)
+            mask = remove_alpha(mask)
+            mask = mask[:, :, ::-1] # RGB to BGR
+            mask = apply_filters(mask, filters)
+            ref = mask_img(ref, mask)
+            self.mask = mask
+        else:
+            self.mask = None
+        self.reference = ref
+
+
 class Profile:
 
     def __init__(
         self,
-        reference_image: Path,
+        references: list[ProfileReferenceImage],
         monitor: int,
         left: int, top: int,
         width: int, height: int,
@@ -57,12 +95,13 @@ class Profile:
         difference_threshold: float,
         target_dps: float = 30,
         filters: list[str] = [],
-        mask_image: Path = None,
         profile_yml_file: Path = None
     ):
-        if not isinstance(reference_image, Path):
-            raise TypeError("reference_image must be Path")
-        self.reference_image = reference_image
+        self.references = []
+        for r in references:
+            if not isinstance(r, ProfileReferenceImage):
+                raise ValueError("all elements of references must be of type ReferenceImage")
+            self.references.append(r)
         self.monitor = int(monitor)
         self.left = int(left)
         self.top = int(top)
@@ -79,21 +118,19 @@ class Profile:
             if not f in FILTERS:
                 raise ValueError(f"Unknown filter '{f}' - supported values: {' '.join(FILTERS)}")
             self.filters.append(f)
-        if mask_image is None:
-            self.mask_image = None
-        else:
-            if not isinstance(mask_image, Path):
-                raise TypeError("mask_image must be either Path or None")
-            self.mask_image = mask_image
 
     @classmethod
     def from_yml_file(cls, filepath: Path):
         profile_dict: dict = yaml_safe_load(filepath.read_text())
-        mask_image = profile_dict.get("mask", None)
-        if mask_image is not None:
-            mask_image = filepath.absolute().parent / Path(mask_image)
+        references = []
+        for r in profile_dict["references"]:
+            img = Path(filepath.absolute().parent / Path(r["image"]))
+            mask = r.get("mask", None)
+            if mask is not None:
+                mask = filepath.absolute().parent / Path(mask)
+            references.append(ProfileReferenceImage(img, mask))
         return cls(
-            Path(filepath.absolute().parent / Path(profile_dict["reference"])),
+            references,
             profile_dict["monitor"],
             profile_dict["region"]["left"],
             profile_dict["region"]["top"],
@@ -103,9 +140,9 @@ class Profile:
             profile_dict["difference"]["threshold"],
             target_dps=profile_dict.get("target_dps", FREQ_DETECT_DEFAULT),
             filters=profile_dict.get("filters", []),
-            mask_image=mask_image,
             profile_yml_file=filepath
         )
+
 
 # Functions for the LibreSplit part
 
@@ -133,8 +170,8 @@ def libresplit_ctl(cmd: int, address: Path):
 
 # Image manipulation filters
 
-def apply_filters(img: ArrayLike, profile: Profile) -> ArrayLike:
-    if FILTER_MEAN_GREYSCALE in profile.filters:
+def apply_filters(img: ArrayLike, filters: list[str]) -> ArrayLike:
+    if FILTER_MEAN_GREYSCALE in filters:
         # changes array shape!
         img = np.mean(img, 2)
     return img
@@ -147,7 +184,9 @@ def remove_alpha(img: ArrayLike) -> ArrayLike:
     if len(shape) == 3:
         if shape[2] == 4:
             return np.delete(img, 3, axis=2) # alpha has idx 3
-    return img
+        elif shape[2] == 3:
+            return img
+    raise RuntimeError("Invalid array shape, could not remove alpha")
 
 
 # Calculate difference -> match reference
@@ -177,19 +216,9 @@ def grab_array_noalpha(mss_instance, monitor, profile) -> ArrayLike:
 # main functions
 
 def run(profile: Profile, dump_diff_only: bool = False):
-    use_mask = profile.mask_image is not None
-    ref = Image.open(profile.reference_image, formats=["png"])
-    ref.load()
-    ref = np.asarray(ref)[:, :, ::-1] # RGB to BGR
-    ref = remove_alpha(ref)
-    ref = apply_filters(ref, profile)
-    if use_mask:
-        mask = Image.open(profile.mask_image, formats=["png"])
-        mask.load()
-        mask = np.asarray(mask)[:, :, ::-1] # RGB to BGR
-        mask = remove_alpha(mask)
-        mask = apply_filters(mask, profile)
-        ref = mask_img(ref, mask)
+    for r in profile.references:
+        r.load(profile.filters)
+    #
     state_loading = False
     libresplit_socket_file = get_libresplit_socket_file()
     with mss() as ms:
@@ -197,23 +226,29 @@ def run(profile: Profile, dump_diff_only: bool = False):
         t1 = time()
         while True:
             current = grab_array_noalpha(ms, mon, profile)
-            current = apply_filters(current, profile)
-            if use_mask:
-                current = mask_img(current, mask)
-            is_match, diff = match_reference(ref, current, profile)
-            if dump_diff_only:
-                print(diff)
-            else:
-                if is_match:
-                    if not state_loading:
-                        state_loading = True
-                        print("loading")
-                        libresplit_ctl(LIBRESPLIT_CMD_STOP_RESET, libresplit_socket_file)
+            current = apply_filters(current, profile.filters)
+            had_match = False
+            for r in profile.references:
+                current_ = current.copy()
+                if r.use_mask:
+                    current_ = mask_img(current_, r.mask)
+                is_match, diff = match_reference(r.reference, current_, profile)
+                if dump_diff_only:
+                    print(diff)
                 else:
-                    if state_loading:
-                        state_loading = False
-                        print("not loading")
-                        libresplit_ctl(LIBRESPLIT_CMD_START_SPLIT, libresplit_socket_file)
+                    if is_match:
+                        had_match = True
+                        break
+            if had_match:
+                if not state_loading:
+                    state_loading = True
+                    print("loading")
+                    libresplit_ctl(LIBRESPLIT_CMD_STOP_RESET, libresplit_socket_file)
+            else:
+                if state_loading:
+                    state_loading = False
+                    print("not loading")
+                    libresplit_ctl(LIBRESPLIT_CMD_START_SPLIT, libresplit_socket_file)
             dt = time() - t1
             sleep(max(0, (1.0 / profile.target_dps) - dt))
             t1 = time()

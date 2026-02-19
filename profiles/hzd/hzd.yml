@@ -1,4 +1,5 @@
-reference: ./hzd-loading.png
+references:
+  - image: ./hzd-loading.png
 monitor: 1
 region:
   left: 98

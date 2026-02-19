@@ -1,4 +1,5 @@
-reference: ./hzdr-loading.png
+references:
+  - image: ./hzdr-loading.png
 monitor: 1
 region:
   left: 0
